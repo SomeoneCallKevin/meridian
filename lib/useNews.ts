@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export type AssetImpact = {
   ticker: string;
@@ -19,7 +19,6 @@ export type NewsArticle = {
   category: "earnings" | "geopolitical" | "macro" | "regulatory" | "general";
   sentiment: number;
   affectedAssets: string[];
-  // NLP-enriched fields (only present after Claude analysis)
   nlpAnalyzed?: boolean;
   urgency?: "high" | "med" | "low";
   assetImpacts?: AssetImpact[];
@@ -37,53 +36,47 @@ type CachedAnalysis = {
   causalChain: string[];
   confidence: number;
   nlpSummary: string;
-  analyzedAt: string;
+  analyzedAt: number;
 };
 
 const CACHE_KEY = "meridian-nlp-cache";
-const CACHE_MAX_AGE = 1000 * 60 * 60 * 4; // 4 hours
+const CACHE_MAX_AGE = 4 * 60 * 60 * 1000; // 4 hours
 
-// Load cached analyses from localStorage
-function loadCache(): Record<string, CachedAnalysis> {
-  if (typeof window === "undefined") return {};
+function getCache(): Record<string, CachedAnalysis> {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return {};
     const data = JSON.parse(raw);
-
-    // Clean out expired entries
+    // Remove expired entries
     const now = Date.now();
-    const cleaned: Record<string, CachedAnalysis> = {};
-    for (const [key, value] of Object.entries(data)) {
-      const entry = value as CachedAnalysis;
-      if (entry.analyzedAt) {
-        const age = now - new Date(entry.analyzedAt).getTime();
-        if (age < CACHE_MAX_AGE) {
-          cleaned[key] = entry;
-        }
+    const valid: Record<string, CachedAnalysis> = {};
+    for (const [key, val] of Object.entries(data)) {
+      const entry = val as CachedAnalysis;
+      if (now - entry.analyzedAt < CACHE_MAX_AGE) {
+        valid[key] = entry;
       }
     }
-    return cleaned;
+    return valid;
   } catch {
     return {};
   }
 }
 
-// Save analyses to localStorage
-function saveCache(cache: Record<string, CachedAnalysis>) {
-  if (typeof window === "undefined") return;
+function setCache(cache: Record<string, CachedAnalysis>) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // localStorage full or unavailable — silently fail
+    const json = JSON.stringify(cache);
+    localStorage.setItem(CACHE_KEY, json);
+    console.log("[Meridian] Saved", Object.keys(cache).length, "analyses to cache");
+  } catch (e) {
+    console.error("[Meridian] Cache save failed:", e);
   }
 }
 
-// Apply cached analysis data to an article
-function applyCacheToArticle(
-  article: NewsArticle,
-  cached: CachedAnalysis
-): NewsArticle {
+function makeKey(headline: string): string {
+  return headline.trim().slice(0, 120);
+}
+
+function enrichArticle(article: NewsArticle, cached: CachedAnalysis): NewsArticle {
   return {
     ...article,
     nlpAnalyzed: true,
@@ -104,33 +97,39 @@ export function useNews(refreshInterval = 120000) {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [nlpEnabled, setNlpEnabled] = useState(false);
+  const cacheRef = useRef<Record<string, CachedAnalysis>>({});
 
-  // Fetch raw articles from Finnhub and apply any cached analyses
+  // Load cache on mount
+  useEffect(() => {
+    cacheRef.current = getCache();
+    if (Object.keys(cacheRef.current).length > 0) {
+      console.log("[Meridian] Loaded", Object.keys(cacheRef.current).length, "cached analyses");
+    }
+  }, []);
+
+  // Fetch raw articles and apply cached analyses
   const fetchArticles = useCallback(async () => {
     try {
       const res = await fetch("/api/news");
       if (!res.ok) return;
       const data = await res.json();
       if (data.articles && data.articles.length > 0) {
-        const cache = loadCache();
-        const hasCache = Object.keys(cache).length > 0;
+        const cache = cacheRef.current;
+        let hasEnriched = false;
 
-        const enriched = data.articles.map((article: NewsArticle) => {
-          // Check if we have a cached analysis for this headline
-          const cacheKey = article.headline.slice(0, 100);
-          const cached = cache[cacheKey];
+        const processed = data.articles.map((article: NewsArticle) => {
+          const key = makeKey(article.headline);
+          const cached = cache[key];
           if (cached) {
-            return applyCacheToArticle(article, cached);
+            hasEnriched = true;
+            return enrichArticle(article, cached);
           }
           return article;
         });
 
-        setArticles(enriched);
+        setArticles(processed);
         setIsLive(true);
-
-        if (hasCache && enriched.some((a: NewsArticle) => a.nlpAnalyzed)) {
-          setNlpEnabled(true);
-        }
+        if (hasEnriched) setNlpEnabled(true);
       }
     } catch {
       // Keep existing data
@@ -139,15 +138,15 @@ export function useNews(refreshInterval = 120000) {
     }
   }, []);
 
-  // Enrich articles with Claude NLP analysis
+  // Analyze articles with Claude
   const analyzeArticles = useCallback(async () => {
-    const unanalyzed = articles.filter((a) => !a.nlpAnalyzed);
-    if (unanalyzed.length === 0) return;
+    const currentArticles = articles.filter((a) => !a.nlpAnalyzed);
+    if (currentArticles.length === 0) return;
 
     setAnalyzing(true);
 
     try {
-      const batch = unanalyzed.slice(0, 10).map((a) => ({
+      const batch = currentArticles.slice(0, 10).map((a) => ({
         id: a.id,
         headline: a.headline,
         summary: a.summary,
@@ -161,73 +160,72 @@ export function useNews(refreshInterval = 120000) {
       });
 
       if (!res.ok) {
-        console.error("Analysis failed:", res.status);
+        console.error("[Meridian] Analysis failed:", res.status);
         return;
       }
 
       const data = await res.json();
 
-      if (data.analyses) {
-        // Load existing cache and add new results
-        const cache = loadCache();
+      if (data.analyses && data.analyses.length > 0) {
+        // Build a map of analysis results by article ID
+        const analysisMap = new Map<string, (typeof data.analyses)[0]>();
+        for (const a of data.analyses) {
+          analysisMap.set(a.id, a);
+        }
 
+        // Update the cache ref
+        const cache = { ...cacheRef.current };
+
+        // Find matching articles and build cache entries
+        for (const article of currentArticles) {
+          const analysis = analysisMap.get(article.id);
+          if (analysis) {
+            const key = makeKey(article.headline);
+            cache[key] = {
+              sentiment: analysis.sentiment,
+              category: analysis.category,
+              urgency: analysis.urgency,
+              affectedAssets: analysis.affectedAssets.map((a: AssetImpact) => a.ticker),
+              assetImpacts: analysis.affectedAssets,
+              causalChain: analysis.causalChain,
+              confidence: analysis.confidence,
+              nlpSummary: analysis.summary,
+              analyzedAt: Date.now(),
+            };
+          }
+        }
+
+        // Save to localStorage
+        cacheRef.current = cache;
+        setCache(cache);
+
+        // Update articles state
         setArticles((prev) =>
           prev.map((article) => {
-            const analysis = data.analyses.find(
-              (a: { id: string }) => a.id === article.id
-            );
-            if (analysis) {
-              // Save to cache using headline as key
-              const cacheKey = article.headline.slice(0, 100);
-              cache[cacheKey] = {
-                sentiment: analysis.sentiment,
-                category: analysis.category,
-                urgency: analysis.urgency,
-                affectedAssets: analysis.affectedAssets.map(
-                  (a: AssetImpact) => a.ticker
-                ),
-                assetImpacts: analysis.affectedAssets,
-                causalChain: analysis.causalChain,
-                confidence: analysis.confidence,
-                nlpSummary: analysis.summary,
-                analyzedAt: new Date().toISOString(),
-              };
-
-              return {
-                ...article,
-                nlpAnalyzed: true,
-                sentiment: analysis.sentiment,
-                category: analysis.category,
-                urgency: analysis.urgency,
-                affectedAssets: analysis.affectedAssets.map(
-                  (a: AssetImpact) => a.ticker
-                ),
-                assetImpacts: analysis.affectedAssets,
-                causalChain: analysis.causalChain,
-                confidence: analysis.confidence,
-                nlpSummary: analysis.summary,
-              };
+            const key = makeKey(article.headline);
+            const cached = cache[key];
+            if (cached) {
+              return enrichArticle(article, cached);
             }
             return article;
           })
         );
 
-        // Save all analyses to localStorage
-        saveCache(cache);
         setNlpEnabled(true);
       }
     } catch (error) {
-      console.error("Analysis error:", error);
+      console.error("[Meridian] Analysis error:", error);
     } finally {
       setAnalyzing(false);
     }
   }, [articles]);
 
-  // Clear cached analyses
+  // Clear cache
   const clearCache = useCallback(() => {
-    if (typeof window !== "undefined") {
+    cacheRef.current = {};
+    try {
       localStorage.removeItem(CACHE_KEY);
-    }
+    } catch {}
     setArticles((prev) =>
       prev.map((a) => ({
         ...a,
@@ -240,6 +238,7 @@ export function useNews(refreshInterval = 120000) {
       }))
     );
     setNlpEnabled(false);
+    console.log("[Meridian] Cache cleared");
   }, []);
 
   // Initial fetch
