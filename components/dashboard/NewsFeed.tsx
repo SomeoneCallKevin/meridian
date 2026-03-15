@@ -14,7 +14,8 @@ const catColors: Record<string, string> = {
 };
 
 export default function NewsFeed() {
-  const { articles, isLive, loading } = useNews();
+  const { articles, isLive, loading, analyzing, nlpEnabled, analyzeArticles } =
+    useNews();
   const [activeTab, setActiveTab] = useState("All");
 
   const filtered =
@@ -24,7 +25,6 @@ export default function NewsFeed() {
           (n) => n.category.toLowerCase() === activeTab.toLowerCase()
         );
 
-  // Show max 7 in the dashboard widget
   const display = filtered.slice(0, 7);
 
   return (
@@ -38,13 +38,44 @@ export default function NewsFeed() {
           </svg>
           <span className="font-semibold text-[15px]">News feed</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          {isLive && (
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse-dot" />
+        <div className="flex items-center gap-3">
+          {nlpEnabled && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue">
+              AI scored
+            </span>
           )}
-          <span className="text-[11px] text-t-muted">{isLive ? "Live" : "Loading..."}</span>
+          {isLive && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse-dot" />
+              <span className="text-[11px] text-t-muted">Live</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* NLP analyze button */}
+      {!nlpEnabled && articles.length > 0 && (
+        <button
+          onClick={analyzeArticles}
+          disabled={analyzing}
+          className={`w-full mb-4 py-2.5 text-[12px] font-medium rounded-lg border transition-colors ${
+            analyzing
+              ? "border-accent-blue/20 bg-accent-blue/5 text-accent-blue"
+              : "border-accent-green/20 bg-accent-green/5 text-accent-green hover:bg-accent-green/10"
+          }`}
+        >
+          {analyzing ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
+              Analyzing with Claude AI...
+            </span>
+          ) : (
+            "Analyze with Claude AI — get real sentiment scores"
+          )}
+        </button>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-white/[0.06] mb-3">
@@ -97,33 +128,40 @@ function NewsRow({ item }: { item: NewsArticle }) {
       <div className="text-[13px] text-t-primary leading-snug mb-2">
         {item.headline}
       </div>
-      <div className="flex items-center gap-2.5 text-[11px] text-t-muted">
-        {!isNeutral && (
+      <div className="flex items-center gap-2.5 text-[11px] text-t-muted flex-wrap">
+        {!isNeutral ? (
           <>
-            <span
-              className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${
-                isBullish ? "bg-accent-green" : "bg-accent-red"
-              }`}
-            />
+            <span className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${isBullish ? "bg-accent-green" : "bg-accent-red"}`} />
             <span className={isBullish ? "text-accent-green" : "text-accent-red"}>
               {isBullish ? "Bullish" : "Bearish"} {item.sentiment > 0 ? "+" : ""}
-              {item.sentiment.toFixed(1)}
+              {item.sentiment.toFixed(2)}
             </span>
           </>
-        )}
-        {isNeutral && (
+        ) : (
           <>
             <span className="w-[7px] h-[7px] rounded-full flex-shrink-0 bg-t-muted" />
-            <span className="text-t-muted">Neutral 0.0</span>
+            <span className="text-t-muted">Neutral</span>
           </>
+        )}
+        {item.urgency && (
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+            item.urgency === "high" ? "bg-accent-red/10 text-accent-red" :
+            item.urgency === "med" ? "bg-accent-amber/10 text-accent-amber" :
+            "bg-accent-blue/10 text-accent-blue"
+          }`}>
+            {item.urgency}
+          </span>
         )}
         <span>{item.source}</span>
         <span>{item.time}</span>
         {item.category !== "general" && (
-          <span
-            className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${catColors[item.category]}`}
-          >
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${catColors[item.category]}`}>
             {item.category}
+          </span>
+        )}
+        {item.nlpAnalyzed && (
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue">
+            AI
           </span>
         )}
       </div>
