@@ -14,7 +14,7 @@ const catColors: Record<string, string> = {
 };
 
 export default function NewsPage() {
-  const { articles, isLive, loading, analyzing, nlpEnabled, analyzeArticles } =
+  const { articles, isLive, loading, analyzing, nlpEnabled, analyzeArticles, clearCache } =
     useNews();
   const [activeTab, setActiveTab] = useState("All");
   const [search, setSearch] = useState("");
@@ -41,6 +41,7 @@ export default function NewsPage() {
   const bullishCount = articles.filter((n) => n.sentiment > 0).length;
   const bearishCount = articles.filter((n) => n.sentiment < 0).length;
   const analyzedCount = articles.filter((n) => n.nlpAnalyzed).length;
+  const unanalyzedCount = articles.filter((n) => !n.nlpAnalyzed).length;
   const avgSentiment =
     articles.length > 0
       ? articles.reduce((acc, n) => acc + n.sentiment, 0) / articles.length
@@ -67,9 +68,7 @@ export default function NewsPage() {
           {isLive && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-green/10 border border-accent-green/15">
               <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse-dot" />
-              <span className="text-xs text-accent-green font-medium">
-                Live feed
-              </span>
+              <span className="text-xs text-accent-green font-medium">Live feed</span>
             </div>
           )}
         </div>
@@ -98,33 +97,48 @@ export default function NewsPage() {
       </div>
 
       {/* NLP analyze button */}
-      {!nlpEnabled && articles.length > 0 && (
-        <button
-          onClick={analyzeArticles}
-          disabled={analyzing}
-          className={`py-3.5 text-[13px] font-medium rounded-xl border transition-all ${
-            analyzing
-              ? "border-accent-blue/20 bg-accent-blue/5 text-accent-blue"
-              : "border-accent-green/20 bg-accent-green/5 text-accent-green hover:bg-accent-green/10"
-          }`}
-        >
-          {analyzing ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-              </svg>
-              Claude AI is analyzing {articles.length} articles... this takes about 10 seconds
-            </span>
-          ) : (
-            <span className="flex items-center justify-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 110 20 10 10 0 010-20z" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-              Analyze all articles with Claude AI — get real sentiment, urgency, and causal chains
-            </span>
+      {articles.length > 0 && (
+        <div className="flex gap-3">
+          {unanalyzedCount > 0 && (
+            <button
+              onClick={analyzeArticles}
+              disabled={analyzing}
+              className={`flex-1 py-3.5 text-[13px] font-medium rounded-xl border transition-all ${
+                analyzing
+                  ? "border-accent-blue/20 bg-accent-blue/5 text-accent-blue"
+                  : "border-accent-green/20 bg-accent-green/5 text-accent-green hover:bg-accent-green/10"
+              }`}
+            >
+              {analyzing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                  Analyzing {unanalyzedCount} articles with Claude AI...
+                </span>
+              ) : nlpEnabled ? (
+                `Analyze ${unanalyzedCount} new article${unanalyzedCount > 1 ? "s" : ""} with Claude AI`
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2a10 10 0 110 20 10 10 0 010-20z" />
+                    <path d="M12 6v6l4 2" />
+                  </svg>
+                  Analyze all articles with Claude AI — get real sentiment, urgency, and causal chains
+                </span>
+              )}
+            </button>
           )}
-        </button>
+          {nlpEnabled && (
+            <button
+              onClick={clearCache}
+              className="px-4 py-3.5 text-[12px] font-medium rounded-xl border border-white/[0.08] text-t-muted hover:text-t-secondary hover:border-white/[0.15] transition-colors"
+              title="Clear cached AI analyses and re-score from scratch"
+            >
+              Clear cache
+            </button>
+          )}
+        </div>
       )}
 
       {/* Filters + search */}
@@ -192,7 +206,6 @@ function NewsCard({
 
   return (
     <div className="border-b border-white/[0.06] last:border-b-0">
-      {/* Main row */}
       <div
         onClick={item.nlpAnalyzed ? onToggle : undefined}
         className={`py-4 hover:bg-white/[0.02] -mx-2 px-2 rounded-lg transition-colors ${
@@ -239,18 +252,14 @@ function NewsCard({
                 </span>
               )}
               {item.confidence !== undefined && (
-                <span className="text-t-muted">
-                  {Math.round(item.confidence * 100)}% conf
-                </span>
+                <span className="text-t-muted">{Math.round(item.confidence * 100)}% conf</span>
               )}
               <span className="text-t-muted">|</span>
               <span>{item.source}</span>
               <span className="text-t-muted">|</span>
               <span>{item.time}</span>
               {item.nlpAnalyzed && (
-                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue">
-                  AI
-                </span>
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue">AI</span>
               )}
             </div>
           </div>
@@ -269,7 +278,6 @@ function NewsCard({
           </div>
         </div>
 
-        {/* Affected assets */}
         {item.affectedAssets.length > 0 && (
           <div className="flex gap-1.5 mt-3">
             {item.affectedAssets.map((asset) => (
@@ -280,7 +288,6 @@ function NewsCard({
           </div>
         )}
 
-        {/* Expand hint for analyzed articles */}
         {item.nlpAnalyzed && !isExpanded && (
           <div className="text-[11px] text-t-muted mt-2 flex items-center gap-1">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
@@ -295,12 +302,9 @@ function NewsCard({
       {isExpanded && item.nlpAnalyzed && (
         <div className="px-2 pb-4 -mx-2">
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-4">
-            {/* Asset impacts */}
             {item.assetImpacts && item.assetImpacts.length > 0 && (
               <div className="mb-4">
-                <div className="text-[11px] text-t-muted uppercase tracking-wider mb-2">
-                  Asset impacts
-                </div>
+                <div className="text-[11px] text-t-muted uppercase tracking-wider mb-2">Asset impacts</div>
                 <div className="flex flex-wrap gap-2">
                   {item.assetImpacts.map((asset, i) => (
                     <div
@@ -314,21 +318,17 @@ function NewsCard({
                       }`}
                     >
                       <span className="font-mono font-medium">{asset.ticker}</span>
-                      <span
-                        className={`text-[10px] font-medium ${
-                          asset.direction === "bullish"
-                            ? "text-accent-green"
-                            : asset.direction === "bearish"
-                            ? "text-accent-red"
-                            : "text-t-muted"
-                        }`}
-                      >
+                      <span className={`text-[10px] font-medium ${
+                        asset.direction === "bullish" ? "text-accent-green" :
+                        asset.direction === "bearish" ? "text-accent-red" : "text-t-muted"
+                      }`}>
                         {asset.direction}
                       </span>
                       <div className="w-8 h-1 bg-white/[0.06] rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full ${
-                            asset.direction === "bullish" ? "bg-accent-green" : asset.direction === "bearish" ? "bg-accent-red" : "bg-t-muted"
+                            asset.direction === "bullish" ? "bg-accent-green" :
+                            asset.direction === "bearish" ? "bg-accent-red" : "bg-t-muted"
                           }`}
                           style={{ width: `${asset.impact * 100}%` }}
                         />
@@ -339,12 +339,9 @@ function NewsCard({
               </div>
             )}
 
-            {/* Causal chain */}
             {item.causalChain && item.causalChain.length > 0 && (
               <div className="mb-4">
-                <div className="text-[11px] text-t-muted uppercase tracking-wider mb-2">
-                  Causal reasoning
-                </div>
+                <div className="text-[11px] text-t-muted uppercase tracking-wider mb-2">Causal reasoning</div>
                 <div className="flex flex-col gap-1">
                   {item.causalChain.map((step, i) => (
                     <div key={i} className="flex gap-2 text-[12px]">
@@ -356,7 +353,6 @@ function NewsCard({
               </div>
             )}
 
-            {/* Read source link */}
             <a
               href={item.url}
               target="_blank"

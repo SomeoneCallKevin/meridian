@@ -14,7 +14,7 @@ const catColors: Record<string, string> = {
 };
 
 export default function NewsFeed() {
-  const { articles, isLive, loading, analyzing, nlpEnabled, analyzeArticles } =
+  const { articles, isLive, loading, analyzing, nlpEnabled, analyzeArticles, clearCache } =
     useNews();
   const [activeTab, setActiveTab] = useState("All");
 
@@ -26,6 +26,9 @@ export default function NewsFeed() {
         );
 
   const display = filtered.slice(0, 7);
+
+  // Check if there are unanalyzed articles (new articles since last analysis)
+  const unanalyzedCount = articles.filter((a) => !a.nlpAnalyzed).length;
 
   return (
     <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
@@ -53,28 +56,40 @@ export default function NewsFeed() {
         </div>
       </div>
 
-      {/* NLP analyze button */}
-      {!nlpEnabled && articles.length > 0 && (
-        <button
-          onClick={analyzeArticles}
-          disabled={analyzing}
-          className={`w-full mb-4 py-2.5 text-[12px] font-medium rounded-lg border transition-colors ${
-            analyzing
-              ? "border-accent-blue/20 bg-accent-blue/5 text-accent-blue"
-              : "border-accent-green/20 bg-accent-green/5 text-accent-green hover:bg-accent-green/10"
-          }`}
-        >
-          {analyzing ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-              </svg>
-              Analyzing with Claude AI...
-            </span>
-          ) : (
-            "Analyze with Claude AI — get real sentiment scores"
-          )}
-        </button>
+      {/* Analyze / re-analyze buttons */}
+      {articles.length > 0 && (
+        <>
+          {!nlpEnabled ? (
+            <button
+              onClick={analyzeArticles}
+              disabled={analyzing}
+              className={`w-full mb-4 py-2.5 text-[12px] font-medium rounded-lg border transition-colors ${
+                analyzing
+                  ? "border-accent-blue/20 bg-accent-blue/5 text-accent-blue"
+                  : "border-accent-green/20 bg-accent-green/5 text-accent-green hover:bg-accent-green/10"
+              }`}
+            >
+              {analyzing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                  Analyzing with Claude AI...
+                </span>
+              ) : (
+                "Analyze with Claude AI — get real sentiment scores"
+              )}
+            </button>
+          ) : unanalyzedCount > 0 ? (
+            <button
+              onClick={analyzeArticles}
+              disabled={analyzing}
+              className="w-full mb-4 py-2 text-[11px] font-medium rounded-lg border border-accent-blue/20 bg-accent-blue/5 text-accent-blue hover:bg-accent-blue/10 transition-colors"
+            >
+              {analyzing ? "Analyzing..." : `Analyze ${unanalyzedCount} new article${unanalyzedCount > 1 ? "s" : ""}`}
+            </button>
+          ) : null}
+        </>
       )}
 
       {/* Tabs */}
@@ -96,13 +111,9 @@ export default function NewsFeed() {
 
       {/* News items */}
       {loading ? (
-        <div className="py-8 text-center text-t-muted text-sm">
-          Loading news...
-        </div>
+        <div className="py-8 text-center text-t-muted text-sm">Loading news...</div>
       ) : display.length === 0 ? (
-        <div className="py-8 text-center text-t-muted text-sm">
-          No articles in this category.
-        </div>
+        <div className="py-8 text-center text-t-muted text-sm">No articles in this category.</div>
       ) : (
         <div className="flex flex-col">
           {display.map((item) => (
