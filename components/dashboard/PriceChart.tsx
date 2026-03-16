@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useMemo, useState } from "react";
-import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
+import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 
 type CandleData = {
   time: string;
@@ -75,22 +74,38 @@ export default function PriceChart({
   direction: "buy" | "sell" | "hold";
 }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
-  const seriesRef = useRef<ReturnType<ReturnType<typeof createChart>["addSeries"]> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chartRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const seriesRef = useRef<any>(null);
   const [range, setRange] = useState<Range>("1M");
 
   const allCandles = useMemo(() => generateCandles(ticker, basePrice, 90), [ticker, basePrice]);
 
-  // Create chart once
-  useEffect(() => {
+  const data = useMemo(() => {
+    const days = RANGE_DAYS[range];
+    return allCandles.slice(-days);
+  }, [range, allCandles]);
+
+  const initChart = useCallback(async () => {
     const container = chartContainerRef.current;
     if (!container) return;
 
-    const chart = createChart(container, {
+    // Dynamic import to avoid SSR issues
+    const lc = await import("lightweight-charts");
+
+    // Clean up previous chart
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    }
+
+    const chart = lc.createChart(container, {
       width: container.clientWidth,
       height: 260,
       layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
+        background: { type: lc.ColorType.Solid, color: "transparent" },
         textColor: "rgba(255,255,255,0.25)",
         fontFamily: "JetBrains Mono, monospace",
         fontSize: 10,
@@ -114,7 +129,7 @@ export default function PriceChart({
       handleScale: false,
     });
 
-    const series = chart.addSeries(CandlestickSeries, {
+    const series = chart.addSeries(lc.CandlestickSeries, {
       upColor: "#22D68A",
       downColor: "#F0564A",
       borderUpColor: "#22D68A",
@@ -126,30 +141,33 @@ export default function PriceChart({
     chartRef.current = chart;
     seriesRef.current = series;
 
+    series.setData(data);
+    chart.timeScale().fitContent();
+  }, [data]);
+
+  // Create chart on mount
+  useEffect(() => {
+    initChart();
+
+    const container = chartContainerRef.current;
+    if (!container) return;
+
     const ro = new ResizeObserver(() => {
-      chart.applyOptions({ width: container.clientWidth });
+      if (chartRef.current) {
+        chartRef.current.applyOptions({ width: container.clientWidth });
+      }
     });
     ro.observe(container);
 
     return () => {
       ro.disconnect();
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+        seriesRef.current = null;
+      }
     };
-  }, []);
-
-  // Update data when range changes
-  useEffect(() => {
-    const series = seriesRef.current;
-    const chart = chartRef.current;
-    if (!series || !chart) return;
-
-    const days = RANGE_DAYS[range];
-    const data = allCandles.slice(-days);
-    series.setData(data);
-    chart.timeScale().fitContent();
-  }, [range, allCandles]);
+  }, [initChart]);
 
   const dirLabel =
     direction === "buy" ? "Bullish trend" : direction === "sell" ? "Bearish trend" : "Neutral";
