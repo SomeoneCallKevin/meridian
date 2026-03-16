@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { mockSignals } from "@/lib/mockData";
+import PriceChart from "@/components/dashboard/PriceChart";
 
 const signalDetails: Record<string, {
   price: string;
@@ -97,6 +98,9 @@ export default function SignalDetailPage() {
     );
   }
 
+  // Parse base price for chart from details (strip $ and commas)
+  const basePrice = parseFloat(details.price.replace(/[$,]/g, "")) || 100;
+
   const dirColors: Record<string, string> = {
     buy: "bg-accent-green/10 text-accent-green",
     sell: "bg-accent-red/10 text-accent-red",
@@ -131,6 +135,9 @@ export default function SignalDetailPage() {
         <MiniMetric label="Current price" value={details.price} />
         <MiniMetric label={`Target (${details.targetPct} upside)`} value={details.target} color="text-accent-green" />
       </div>
+
+      {/* Price chart */}
+      <PriceChart ticker={signal.ticker} basePrice={basePrice} direction={signal.direction} />
 
       {/* Sources + Indicators */}
       <div className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
