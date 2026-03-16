@@ -297,15 +297,13 @@ function SignalCard({
         <div className="px-2 pb-4 -mx-2">
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-5">
             {/* Price chart */}
-            {signal.priceData && (
-              <div className="mb-5">
-                <PriceChart
-                  ticker={signal.ticker}
-                  basePrice={signal.priceData.price}
-                  direction={signal.direction}
-                />
-              </div>
-            )}
+            <div className="mb-5">
+              <PriceChart
+                ticker={signal.ticker}
+                basePrice={signal.priceData?.price ?? 100}
+                direction={signal.direction}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-6 max-md:grid-cols-1">
               {/* Left: Signal info */}
               <div>
