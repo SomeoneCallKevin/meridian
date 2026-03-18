@@ -1,13 +1,44 @@
 "use client";
 
 import { useState } from "react";
+import { storeSet, storeRemove } from "@/lib/store";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const [riskPct, setRiskPct] = useState("2");
   const [maxExposure, setMaxExposure] = useState("35");
   const [stopLoss, setStopLoss] = useState("5");
   const [notifications, setNotifications] = useState(true);
   const [highUrgOnly, setHighUrgOnly] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [cleared, setCleared] = useState(false);
+
+  const handleClearAllData = () => {
+    // Clear all user data from localStorage
+    storeRemove("watchlist");
+    storeRemove("positions-open");
+    storeRemove("positions-closed");
+    storeRemove("settings");
+    try { localStorage.removeItem("meridian-signals-cache"); } catch {}
+
+    // Sync empty state to server
+    fetch("/api/user/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        watchlist: [],
+        positionsOpen: [],
+        positionsClosed: [],
+        signalsCache: null,
+        settings: { onboardingComplete: true },
+      }),
+    }).catch(() => {});
+
+    setCleared(true);
+    setShowClearConfirm(false);
+    setTimeout(() => window.location.reload(), 800);
+  };
 
   return (
     <div className="flex flex-col gap-6 max-w-[800px]">
@@ -147,6 +178,48 @@ export default function SettingsPage() {
           <ApiRow name="Claude API (Anthropic)" status="Not connected" connected={false} />
           <ApiRow name="Binance" status="Not connected" connected={false} />
         </div>
+      </div>
+
+      {/* Account & Data */}
+      <div className="bg-surface border border-accent-red/10 rounded-xl p-6">
+        <h3 className="text-[15px] font-semibold mb-2">Data management</h3>
+        <p className="text-[13px] text-t-muted mb-5">
+          Manage your account data. These actions cannot be undone.
+        </p>
+
+        {cleared ? (
+          <div className="bg-accent-green/10 border border-accent-green/20 rounded-lg px-4 py-3 text-[13px] text-accent-green">
+            All data cleared successfully. Reloading...
+          </div>
+        ) : showClearConfirm ? (
+          <div className="bg-accent-red/5 border border-accent-red/15 rounded-lg p-4">
+            <p className="text-[13px] text-t-primary mb-3">
+              This will permanently delete all your positions, watchlist, trade journal entries, and signals.
+              {user && <span className="text-t-muted"> Your account ({user.email}) will remain active.</span>}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleClearAllData}
+                className="px-4 py-2 bg-accent-red text-white text-[13px] font-medium rounded-lg hover:bg-accent-red/90 transition-colors"
+              >
+                Yes, clear everything
+              </button>
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 border border-white/[0.1] text-t-secondary text-[13px] font-medium rounded-lg hover:bg-white/[0.04] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            className="px-4 py-2 border border-accent-red/20 text-accent-red text-[13px] font-medium rounded-lg hover:bg-accent-red/5 transition-colors"
+          >
+            Clear all portfolio data
+          </button>
+        )}
       </div>
 
       {/* Save button */}

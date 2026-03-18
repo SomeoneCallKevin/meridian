@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Hero() {
   return (
     <section className="pt-[180px] pb-[120px] relative overflow-hidden">
@@ -38,8 +40,8 @@ export default function Hero() {
         </p>
 
         <div className="flex justify-center gap-4 animate-fade-up-3">
-          <button className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent-green text-deep text-sm font-semibold rounded-full hover:bg-[#2EE89A] hover:shadow-[0_0_30px_rgba(34,214,138,0.25)] hover:-translate-y-0.5 transition-all">
-            Get early access
+          <Link href="/login" className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent-green text-deep text-sm font-semibold rounded-full hover:bg-[#2EE89A] hover:shadow-[0_0_30px_rgba(34,214,138,0.25)] hover:-translate-y-0.5 transition-all no-underline">
+            Get started free
             <svg
               width="16"
               height="16"
@@ -54,7 +56,7 @@ export default function Hero() {
                 strokeLinejoin="round"
               />
             </svg>
-          </button>
+          </Link>
           <a
             href="#how-it-works"
             className="inline-flex items-center gap-2 px-6 py-2.5 border border-white/[0.12] text-t-primary text-sm font-medium rounded-full hover:border-t-muted hover:bg-white/[0.03] transition-all"

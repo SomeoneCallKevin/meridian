@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSignals, type LiveSignal } from "@/lib/useSignals";
 import Link from "next/link";
 
@@ -37,6 +37,9 @@ export default function SignalList() {
     analyzedCount,
   } = useSignals();
   const [activeTab, setActiveTab] = useState("All");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   const filtered =
     activeTab === "All"
@@ -56,7 +59,7 @@ export default function SignalList() {
           <span className="font-semibold text-[15px]">Trade signals</span>
         </div>
         <div className="flex items-center gap-2">
-          {generated && (
+          {mounted && generated && (
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent-green/10 text-accent-green">
               {signals.length} live
             </span>
@@ -65,7 +68,7 @@ export default function SignalList() {
       </div>
 
       {/* Generate button */}
-      {!generated && (
+      {mounted && !generated && (
         <button
           onClick={nlpEnabled ? generateSignals : analyzeArticles}
           disabled={generating || newsAnalyzing}
@@ -86,7 +89,7 @@ export default function SignalList() {
       )}
 
       {/* Tabs */}
-      {generated && (
+      {mounted && generated && (
         <div className="flex gap-0 border-b border-white/[0.06] mb-3">
           {tabs.map((tab) => (
             <button
@@ -105,7 +108,9 @@ export default function SignalList() {
       )}
 
       {/* Signal rows */}
-      {generated ? (
+      {!mounted ? (
+        <div className="py-6 text-center text-t-muted text-[12px]">Loading signals...</div>
+      ) : generated ? (
         display.length === 0 ? (
           <div className="py-8 text-center text-t-muted text-sm">
             No signals in this category.
@@ -124,7 +129,7 @@ export default function SignalList() {
       )}
 
       {/* View all link */}
-      {generated && signals.length > 7 && (
+      {mounted && generated && signals.length > 7 && (
         <Link
           href="/dashboard/signals"
           className="block text-center text-[12px] text-accent-green hover:text-[#2EE89A] mt-3 no-underline"

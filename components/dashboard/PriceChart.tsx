@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 
 type CandleData = {
   time: string;
@@ -10,59 +10,15 @@ type CandleData = {
   close: number;
 };
 
-// Deterministic PRNG seeded by ticker string
-function seededRandom(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
-  }
-  return () => {
-    h = (h ^ (h >>> 16)) * 0x45d9f3b;
-    h = (h ^ (h >>> 16)) * 0x45d9f3b;
-    h = h ^ (h >>> 16);
-    return (h >>> 0) / 0xffffffff;
-  };
-}
-
-function generateCandles(ticker: string, basePrice: number, days: number): CandleData[] {
-  const rand = seededRandom(ticker);
-  const candles: CandleData[] = [];
-  let price = basePrice * (0.85 + rand() * 0.15);
-
-  const now = new Date();
-  for (let i = days; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    if (d.getDay() === 0 || d.getDay() === 6) continue;
-
-    const volatility = basePrice * 0.018;
-    const drift = (rand() - 0.47) * volatility;
-    const open = price;
-    const close = open + drift;
-    const wickUp = Math.abs(drift) * (0.3 + rand() * 1.2);
-    const wickDown = Math.abs(drift) * (0.3 + rand() * 1.2);
-    const high = Math.max(open, close) + wickUp;
-    const low = Math.min(open, close) - wickDown;
-
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-
-    candles.push({
-      time: `${yyyy}-${mm}-${dd}`,
-      open: +open.toFixed(2),
-      high: +high.toFixed(2),
-      low: +low.toFixed(2),
-      close: +close.toFixed(2),
-    });
-    price = close;
-  }
-  return candles;
-}
-
-const RANGES = ["1W", "1M", "3M"] as const;
+const RANGES = ["1W", "1M", "3M", "6M", "1Y"] as const;
 type Range = (typeof RANGES)[number];
-const RANGE_DAYS: Record<Range, number> = { "1W": 7, "1M": 30, "3M": 90 };
+const RANGE_DAYS: Record<Range, number> = {
+  "1W": 10,
+  "1M": 35,
+  "3M": 100,
+  "6M": 200,
+  "1Y": 370,
+};
 
 export default function PriceChart({
   ticker,
@@ -78,20 +34,60 @@ export default function PriceChart({
   const chartRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const seriesRef = useRef<any>(null);
+
   const [range, setRange] = useState<Range>("1M");
+  const [allCandles, setAllCandles] = useState<CandleData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const allCandles = useMemo(() => generateCandles(ticker, basePrice, 90), [ticker, basePrice]);
+  // Fetch real candle data from our API
+  useEffect(() => {
+    let cancelled = false;
 
-  const data = useMemo(() => {
+    async function fetchCandles() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const res = await fetch(`/api/candles?symbol=${encodeURIComponent(ticker)}&days=370`);
+        if (!res.ok) throw new Error("Failed to fetch");
+        const data = await res.json();
+
+        if (cancelled) return;
+
+        if (data.candles && data.candles.length > 0) {
+          setAllCandles(data.candles);
+        } else {
+          setError("No chart data available for this ticker");
+          setAllCandles([]);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load chart data");
+          setAllCandles([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchCandles();
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
+  // Slice candles to match selected range
+  const data = (() => {
+    if (allCandles.length === 0) return [];
     const days = RANGE_DAYS[range];
     return allCandles.slice(-days);
-  }, [range, allCandles]);
+  })();
 
   const initChart = useCallback(async () => {
     const container = chartContainerRef.current;
-    if (!container) return;
+    if (!container || data.length === 0) return;
 
-    // Dynamic import to avoid SSR issues
     const lc = await import("lightweight-charts");
 
     // Clean up previous chart
@@ -145,8 +141,10 @@ export default function PriceChart({
     chart.timeScale().fitContent();
   }, [data]);
 
-  // Create chart on mount
+  // Create/update chart when data changes
   useEffect(() => {
+    if (data.length === 0) return;
+
     initChart();
 
     const container = chartContainerRef.current;
@@ -167,7 +165,7 @@ export default function PriceChart({
         seriesRef.current = null;
       }
     };
-  }, [initChart]);
+  }, [initChart, data]);
 
   const dirLabel =
     direction === "buy" ? "Bullish trend" : direction === "sell" ? "Bearish trend" : "Neutral";
@@ -177,6 +175,11 @@ export default function PriceChart({
       : direction === "sell"
         ? "text-accent-red"
         : "text-accent-amber";
+
+  // Calculate actual price change from candle data for the selected range
+  const rangeChange = data.length >= 2
+    ? ((data[data.length - 1].close - data[0].open) / data[0].open) * 100
+    : 0;
 
   return (
     <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
@@ -188,6 +191,13 @@ export default function PriceChart({
           >
             {dirLabel}
           </span>
+          {data.length >= 2 && (
+            <span
+              className={`text-[10px] font-mono ${rangeChange >= 0 ? "text-accent-green" : "text-accent-red"}`}
+            >
+              {rangeChange >= 0 ? "+" : ""}{rangeChange.toFixed(2)}% ({range})
+            </span>
+          )}
         </div>
         <div className="flex gap-1">
           {RANGES.map((r) => (
@@ -205,7 +215,21 @@ export default function PriceChart({
           ))}
         </div>
       </div>
-      <div ref={chartContainerRef} className="w-full" />
+
+      {loading ? (
+        <div className="w-full h-[260px] flex items-center justify-center">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-accent-green/30 border-t-accent-green rounded-full animate-spin" />
+            <span className="text-xs text-t-muted">Loading real market data…</span>
+          </div>
+        </div>
+      ) : error ? (
+        <div className="w-full h-[260px] flex items-center justify-center">
+          <span className="text-xs text-t-muted">{error}</span>
+        </div>
+      ) : (
+        <div ref={chartContainerRef} className="w-full" />
+      )}
     </div>
   );
 }

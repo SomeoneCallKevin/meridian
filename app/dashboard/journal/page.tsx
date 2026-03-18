@@ -1,150 +1,47 @@
 "use client";
 
 import { useState } from "react";
-
-type JournalEntry = {
-  id: string;
-  date: string;
-  ticker: string;
-  direction: "buy" | "sell";
-  signalConf: number;
-  entryPrice: number;
-  exitPrice: number;
-  pnl: number;
-  outcome: "win" | "loss";
-  signalBasis: string;
-  holdTime: string;
-  notes: string;
-};
-
-const mockJournal: JournalEntry[] = [
-  {
-    id: "j-1",
-    date: "Mar 14, 2026",
-    ticker: "AAPL",
-    direction: "buy",
-    signalConf: 76,
-    entryPrice: 188.2,
-    exitPrice: 194.6,
-    pnl: 3.4,
-    outcome: "win",
-    signalBasis: "News + TA",
-    holdTime: "4 days",
-    notes: "Earnings beat drove the move. Signal was right on timing.",
-  },
-  {
-    id: "j-2",
-    date: "Mar 12, 2026",
-    ticker: "CL",
-    direction: "sell",
-    signalConf: 68,
-    entryPrice: 84.1,
-    exitPrice: 82.4,
-    pnl: 2.0,
-    outcome: "win",
-    signalBasis: "Geopolitical",
-    holdTime: "2 days",
-    notes: "OPEC signal was accurate. Sold ahead of the production announcement.",
-  },
-  {
-    id: "j-3",
-    date: "Mar 10, 2026",
-    ticker: "ETH",
-    direction: "buy",
-    signalConf: 52,
-    entryPrice: 3520,
-    exitPrice: 3380,
-    pnl: -4.0,
-    outcome: "loss",
-    signalBasis: "Sentiment",
-    holdTime: "5 days",
-    notes: "Low confidence signal. Social hype didn't translate to sustained buying. Should have waited for TA confirmation.",
-  },
-  {
-    id: "j-4",
-    date: "Mar 8, 2026",
-    ticker: "NVDA",
-    direction: "buy",
-    signalConf: 82,
-    entryPrice: 795.0,
-    exitPrice: 812.4,
-    pnl: 2.2,
-    outcome: "win",
-    signalBasis: "News + TA",
-    holdTime: "3 days",
-    notes: "Pre-earnings run-up caught by the sentiment engine. Exited before actual earnings for safety.",
-  },
-  {
-    id: "j-5",
-    date: "Mar 6, 2026",
-    ticker: "TSLA",
-    direction: "buy",
-    signalConf: 61,
-    entryPrice: 252.3,
-    exitPrice: 245.8,
-    pnl: -2.6,
-    outcome: "loss",
-    signalBasis: "TA only",
-    holdTime: "4 days",
-    notes: "Technical signal only — no news or sentiment confirmation. TA-only signals continue to underperform.",
-  },
-  {
-    id: "j-6",
-    date: "Mar 4, 2026",
-    ticker: "XOM",
-    direction: "buy",
-    signalConf: 74,
-    entryPrice: 105.2,
-    exitPrice: 108.5,
-    pnl: 3.1,
-    outcome: "win",
-    signalBasis: "Geopolitical + TA",
-    holdTime: "3 days",
-    notes: "Middle East tension signal worked well. Entry at support level was good timing.",
-  },
-  {
-    id: "j-7",
-    date: "Mar 2, 2026",
-    ticker: "BTC",
-    direction: "buy",
-    signalConf: 70,
-    entryPrice: 59800,
-    exitPrice: 62100,
-    pnl: 3.8,
-    outcome: "win",
-    signalBasis: "News + Social",
-    holdTime: "6 days",
-    notes: "ETF flow narrative played out. Social signals were unusually accurate here.",
-  },
-];
+import { usePositions, type ClosedPosition } from "@/lib/usePositions";
 
 const tabs = ["All", "Wins", "Losses"];
 
+function fmt(price: number): string {
+  if (Math.abs(price) >= 1000) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${price.toFixed(2)}`;
+}
+
+function holdTime(openedAt: string, closedAt: string): string {
+  const ms = new Date(closedAt).getTime() - new Date(openedAt).getTime();
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  if (hours < 1) return "< 1 hour";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days !== 1 ? "s" : ""}`;
+}
+
 export default function JournalPage() {
+  const { closed } = usePositions();
   const [activeTab, setActiveTab] = useState("All");
+
+  const trades = closed.map((c) => ({
+    ...c,
+    outcome: (c.pnl >= 0 ? "win" : "loss") as "win" | "loss",
+  }));
 
   const filtered =
     activeTab === "All"
-      ? mockJournal
+      ? trades
       : activeTab === "Wins"
-      ? mockJournal.filter((j) => j.outcome === "win")
-      : mockJournal.filter((j) => j.outcome === "loss");
+        ? trades.filter((t) => t.outcome === "win")
+        : trades.filter((t) => t.outcome === "loss");
 
-  const totalTrades = mockJournal.length;
-  const wins = mockJournal.filter((j) => j.outcome === "win").length;
-  const winRate = Math.round((wins / totalTrades) * 100);
-  const avgWin = mockJournal.filter((j) => j.pnl > 0).reduce((a, j) => a + j.pnl, 0) / wins;
-  const losses = mockJournal.filter((j) => j.outcome === "loss").length;
-  const avgLoss = Math.abs(mockJournal.filter((j) => j.pnl < 0).reduce((a, j) => a + j.pnl, 0) / losses);
-  const totalPnl = mockJournal.reduce((a, j) => a + j.pnl, 0);
-
-  // Signal basis performance
-  const basisPerf: Record<string, { wins: number; total: number }> = {};
-  mockJournal.forEach((j) => {
-    if (!basisPerf[j.signalBasis]) basisPerf[j.signalBasis] = { wins: 0, total: 0 };
-    basisPerf[j.signalBasis].total++;
-    if (j.outcome === "win") basisPerf[j.signalBasis].wins++;
-  });
+  const totalTrades = trades.length;
+  const wins = trades.filter((t) => t.outcome === "win").length;
+  const losses = trades.filter((t) => t.outcome === "loss").length;
+  const winRate = totalTrades > 0 ? Math.round((wins / totalTrades) * 100) : 0;
+  const avgWin = wins > 0 ? trades.filter((t) => t.pnlPercent > 0).reduce((a, t) => a + t.pnlPercent, 0) / wins : 0;
+  const avgLoss = losses > 0 ? Math.abs(trades.filter((t) => t.pnlPercent < 0).reduce((a, t) => a + t.pnlPercent, 0) / losses) : 0;
+  const totalPnlDollar = trades.reduce((a, t) => a + t.pnl, 0);
 
   return (
     <div className="flex flex-col gap-6 max-w-[1100px]">
@@ -152,7 +49,7 @@ export default function JournalPage() {
       <div>
         <h2 className="text-xl font-semibold">Trade journal</h2>
         <p className="text-sm text-t-muted mt-1">
-          Track every trade, learn from outcomes, improve over time
+          Automatically logged from closed positions
         </p>
       </div>
 
@@ -164,122 +61,162 @@ export default function JournalPage() {
         </div>
         <div className="bg-surface border border-white/[0.06] rounded-xl px-5 py-4">
           <div className="text-[11px] text-t-muted uppercase tracking-wider mb-1">Win rate</div>
-          <div className="text-[24px] font-semibold font-mono text-accent-green">{winRate}%</div>
+          <div className={`text-[24px] font-semibold font-mono ${totalTrades > 0 ? (winRate >= 50 ? "text-accent-green" : "text-accent-red") : "text-t-muted"}`}>
+            {totalTrades > 0 ? `${winRate}%` : "—"}
+          </div>
         </div>
         <div className="bg-surface border border-white/[0.06] rounded-xl px-5 py-4">
           <div className="text-[11px] text-t-muted uppercase tracking-wider mb-1">Avg win</div>
-          <div className="text-[24px] font-semibold font-mono text-accent-green">+{avgWin.toFixed(1)}%</div>
+          <div className={`text-[24px] font-semibold font-mono ${wins > 0 ? "text-accent-green" : "text-t-muted"}`}>
+            {wins > 0 ? `+${avgWin.toFixed(1)}%` : "—"}
+          </div>
         </div>
         <div className="bg-surface border border-white/[0.06] rounded-xl px-5 py-4">
           <div className="text-[11px] text-t-muted uppercase tracking-wider mb-1">Avg loss</div>
-          <div className="text-[24px] font-semibold font-mono text-accent-red">-{avgLoss.toFixed(1)}%</div>
+          <div className={`text-[24px] font-semibold font-mono ${losses > 0 ? "text-accent-red" : "text-t-muted"}`}>
+            {losses > 0 ? `-${avgLoss.toFixed(1)}%` : "—"}
+          </div>
         </div>
         <div className="bg-surface border border-white/[0.06] rounded-xl px-5 py-4">
           <div className="text-[11px] text-t-muted uppercase tracking-wider mb-1">Total P&L</div>
-          <div className={`text-[24px] font-semibold font-mono ${totalPnl >= 0 ? "text-accent-green" : "text-accent-red"}`}>
-            {totalPnl > 0 ? "+" : ""}{totalPnl.toFixed(1)}%
+          <div className={`text-[24px] font-semibold font-mono ${totalPnlDollar >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+            {totalTrades > 0 ? `${totalPnlDollar >= 0 ? "+" : ""}${fmt(totalPnlDollar)}` : "—"}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_300px] gap-6 max-lg:grid-cols-1">
-        {/* Trade list */}
-        <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
-          {/* Tabs */}
-          <div className="flex gap-0 border-b border-white/[0.06] mb-4">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3.5 py-2 text-[13px] border-b-2 -mb-px transition-colors ${
-                  activeTab === tab
-                    ? "text-t-primary font-medium border-t-primary"
-                    : "text-t-muted border-transparent hover:text-t-secondary"
-                }`}
-              >
-                {tab} ({tab === "All" ? totalTrades : tab === "Wins" ? wins : losses})
-              </button>
-            ))}
-          </div>
-
-          {/* Entries */}
-          {filtered.map((entry) => (
-            <JournalCard key={entry.id} entry={entry} />
-          ))}
+      {totalTrades === 0 ? (
+        <div className="bg-surface border border-white/[0.06] rounded-xl p-12 text-center">
+          <p className="text-t-secondary">No closed trades yet</p>
+          <p className="text-sm text-t-muted mt-1">
+            When you close a position, it will automatically appear here as a journal entry
+          </p>
         </div>
-
-        {/* Insights sidebar */}
-        <div className="flex flex-col gap-6">
-          {/* Signal basis performance */}
+      ) : (
+        <div className="grid grid-cols-[1fr_300px] gap-6 max-lg:grid-cols-1">
+          {/* Trade list */}
           <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
-            <div className="text-[15px] font-semibold mb-4">Performance by signal type</div>
-            <div className="flex flex-col gap-3">
-              {Object.entries(basisPerf)
-                .sort(([, a], [, b]) => (b.wins / b.total) - (a.wins / a.total))
-                .map(([basis, perf]) => {
-                  const rate = Math.round((perf.wins / perf.total) * 100);
-                  return (
-                    <div key={basis}>
-                      <div className="flex justify-between text-[13px] mb-1.5">
-                        <span className="text-t-secondary">{basis}</span>
-                        <span className={`font-mono font-medium ${rate >= 60 ? "text-accent-green" : rate >= 40 ? "text-accent-amber" : "text-accent-red"}`}>
-                          {rate}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${rate >= 60 ? "bg-accent-green" : rate >= 40 ? "bg-accent-amber" : "bg-accent-red"}`}
-                          style={{ width: `${rate}%` }}
-                        />
-                      </div>
-                      <div className="text-[11px] text-t-muted mt-1">
-                        {perf.wins}W / {perf.total - perf.wins}L out of {perf.total} trades
-                      </div>
-                    </div>
-                  );
-                })}
+            {/* Tabs */}
+            <div className="flex gap-0 border-b border-white/[0.06] mb-4">
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3.5 py-2 text-[13px] border-b-2 -mb-px transition-colors ${
+                    activeTab === tab
+                      ? "text-t-primary font-medium border-t-primary"
+                      : "text-t-muted border-transparent hover:text-t-secondary"
+                  }`}
+                >
+                  {tab} ({tab === "All" ? totalTrades : tab === "Wins" ? wins : losses})
+                </button>
+              ))}
             </div>
+
+            {/* Entries */}
+            {filtered.length === 0 ? (
+              <div className="py-8 text-center text-sm text-t-muted">No trades in this category</div>
+            ) : (
+              filtered.map((trade) => (
+                <JournalCard key={trade.id} trade={trade} />
+              ))
+            )}
           </div>
 
-          {/* Key learnings */}
-          <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
-            <div className="text-[15px] font-semibold mb-4">Key patterns</div>
-            <div className="flex flex-col gap-3">
-              <Insight
-                type="positive"
-                text="Multi-source signals (News + TA, Geopolitical + TA) have the highest win rate at 100%."
-              />
-              <Insight
-                type="negative"
-                text="TA-only signals are underperforming at 0% win rate. Consider requiring at least one additional source."
-              />
-              <Insight
-                type="positive"
-                text="Geopolitical signals for energy trades are performing well — 2 for 2 on oil-related trades."
-              />
-              <Insight
-                type="neutral"
-                text="Average hold time for winners: 3.6 days. For losers: 4.5 days. Cut losers faster."
-              />
+          {/* Insights sidebar */}
+          <div className="flex flex-col gap-6">
+            {/* Per-ticker performance */}
+            <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
+              <div className="text-[15px] font-semibold mb-4">Performance by ticker</div>
+              <TickerBreakdown trades={trades} />
+            </div>
+
+            {/* Quick insights */}
+            <div className="bg-surface border border-white/[0.06] rounded-xl p-5">
+              <div className="text-[15px] font-semibold mb-4">Insights</div>
+              <div className="flex flex-col gap-3">
+                {winRate >= 60 && (
+                  <Insight type="positive" text={`Strong ${winRate}% win rate across ${totalTrades} trades.`} />
+                )}
+                {winRate > 0 && winRate < 40 && (
+                  <Insight type="negative" text={`Win rate at ${winRate}%. Review your entry criteria.`} />
+                )}
+                {avgWin > avgLoss && wins > 0 && losses > 0 && (
+                  <Insight type="positive" text={`Avg win (+${avgWin.toFixed(1)}%) exceeds avg loss (-${avgLoss.toFixed(1)}%). Good risk/reward.`} />
+                )}
+                {avgLoss > avgWin && wins > 0 && losses > 0 && (
+                  <Insight type="negative" text={`Avg loss (-${avgLoss.toFixed(1)}%) exceeds avg win (+${avgWin.toFixed(1)}%). Tighten stop-losses.`} />
+                )}
+                {totalTrades > 0 && totalPnlDollar > 0 && (
+                  <Insight type="positive" text={`Net profitable: ${fmt(totalPnlDollar)} across all closed trades.`} />
+                )}
+                {totalTrades > 0 && totalPnlDollar < 0 && (
+                  <Insight type="negative" text={`Net loss: ${fmt(totalPnlDollar)}. Review position sizing and entry timing.`} />
+                )}
+                {totalTrades < 3 && (
+                  <Insight type="neutral" text="Close more positions to unlock detailed performance insights." />
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-function JournalCard({ entry }: { entry: JournalEntry }) {
-  const isWin = entry.outcome === "win";
+function TickerBreakdown({ trades }: { trades: (ClosedPosition & { outcome: string })[] }) {
+  const byTicker: Record<string, { wins: number; total: number; totalPnl: number }> = {};
+  trades.forEach((t) => {
+    if (!byTicker[t.ticker]) byTicker[t.ticker] = { wins: 0, total: 0, totalPnl: 0 };
+    byTicker[t.ticker].total++;
+    byTicker[t.ticker].totalPnl += t.pnl;
+    if (t.pnl > 0) byTicker[t.ticker].wins++;
+  });
+
+  const sorted = Object.entries(byTicker).sort(([, a], [, b]) => b.totalPnl - a.totalPnl);
+
+  if (sorted.length === 0) {
+    return <p className="text-sm text-t-muted">No data yet</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {sorted.map(([ticker, perf]) => {
+        const rate = Math.round((perf.wins / perf.total) * 100);
+        return (
+          <div key={ticker}>
+            <div className="flex justify-between text-[13px] mb-1.5">
+              <span className="font-mono font-medium text-t-primary">{ticker}</span>
+              <span className={`font-mono font-medium ${perf.totalPnl >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+                {perf.totalPnl >= 0 ? "+" : ""}${perf.totalPnl.toFixed(2)}
+              </span>
+            </div>
+            <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${rate >= 50 ? "bg-accent-green" : "bg-accent-red"}`}
+                style={{ width: `${rate}%` }}
+              />
+            </div>
+            <div className="text-[11px] text-t-muted mt-1">
+              {perf.wins}W / {perf.total - perf.wins}L — {rate}% win rate
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function JournalCard({ trade }: { trade: ClosedPosition & { outcome: string } }) {
+  const isWin = trade.pnl >= 0;
 
   return (
     <div className="py-4 border-b border-white/[0.06] last:border-b-0">
       <div className="flex items-center gap-3 mb-2">
-        <span className="font-mono font-medium text-[14px]">{entry.ticker}</span>
-        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wide ${
-          entry.direction === "buy" ? "bg-accent-green/10 text-accent-green" : "bg-accent-red/10 text-accent-red"
-        }`}>
-          {entry.direction}
+        <span className="font-mono font-medium text-[14px]">{trade.ticker}</span>
+        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wide bg-accent-green/10 text-accent-green`}>
+          buy
         </span>
         <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${
           isWin ? "bg-accent-green/10 text-accent-green" : "bg-accent-red/10 text-accent-red"
@@ -287,22 +224,22 @@ function JournalCard({ entry }: { entry: JournalEntry }) {
           {isWin ? "WIN" : "LOSS"}
         </span>
         <span className={`font-mono text-[13px] font-medium ${isWin ? "text-accent-green" : "text-accent-red"}`}>
-          {entry.pnl > 0 ? "+" : ""}{entry.pnl}%
+          {trade.pnlPercent >= 0 ? "+" : ""}{trade.pnlPercent.toFixed(2)}%
+        </span>
+        <span className={`font-mono text-[12px] ${isWin ? "text-accent-green/60" : "text-accent-red/60"}`}>
+          ({trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)})
         </span>
         <span className="flex-1" />
-        <span className="text-[11px] text-t-muted">{entry.date}</span>
+        <span className="text-[11px] text-t-muted">
+          {new Date(trade.closedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+        </span>
       </div>
 
-      <div className="flex gap-4 text-[12px] text-t-muted mb-2.5">
-        <span>Entry: ${entry.entryPrice.toLocaleString()}</span>
-        <span>Exit: ${entry.exitPrice.toLocaleString()}</span>
-        <span>Hold: {entry.holdTime}</span>
-        <span>Conf: {entry.signalConf}%</span>
-        <span>Basis: {entry.signalBasis}</span>
-      </div>
-
-      <div className="text-[12px] text-t-secondary leading-relaxed bg-white/[0.02] rounded-lg px-3.5 py-2.5 border-l-2 border-white/[0.06]">
-        {entry.notes}
+      <div className="flex gap-4 text-[12px] text-t-muted">
+        <span>Entry: ${trade.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <span>Exit: ${trade.exitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <span>{trade.shares} shares</span>
+        <span>Held: {holdTime(trade.openedAt, trade.closedAt)}</span>
       </div>
     </div>
   );

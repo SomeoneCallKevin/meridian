@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 60);
@@ -43,9 +46,12 @@ export default function Navbar() {
           >
             Signals
           </a>
-          <button className="px-6 py-2.5 bg-accent-green text-deep text-sm font-semibold rounded-full hover:bg-[#2EE89A] hover:shadow-[0_0_30px_rgba(34,214,138,0.25)] transition-all">
-            Get early access
-          </button>
+          <Link
+            href={user ? "/dashboard" : "/login"}
+            className="px-6 py-2.5 bg-accent-green text-deep text-sm font-semibold rounded-full hover:bg-[#2EE89A] hover:shadow-[0_0_30px_rgba(34,214,138,0.25)] transition-all no-underline"
+          >
+            {user ? "Dashboard" : "Sign in"}
+          </Link>
         </div>
       </div>
     </nav>

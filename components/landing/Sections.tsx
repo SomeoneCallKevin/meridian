@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, ReactNode } from "react";
+import Link from "next/link";
 
 /* ── Scroll reveal wrapper ── */
 function Reveal({ children, className = "", delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
@@ -172,18 +173,18 @@ export function CTA() {
             Start <em className="italic text-accent-green">understanding.</em>
           </h2>
           <p className="text-[17px] text-t-secondary max-w-[480px] mx-auto mb-10 leading-[1.7]">
-            Join the waitlist for early access. Meridian is currently in private beta with a small group of traders.
+            Create a free account and start making smarter trades with AI-powered intelligence.
           </p>
           <div className="flex justify-center gap-4">
-            <button className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent-green text-deep text-sm font-semibold rounded-full hover:bg-[#2EE89A] hover:shadow-[0_0_30px_rgba(34,214,138,0.25)] hover:-translate-y-0.5 transition-all">
-              Join the waitlist
+            <Link href="/login" className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent-green text-deep text-sm font-semibold rounded-full hover:bg-[#2EE89A] hover:shadow-[0_0_30px_rgba(34,214,138,0.25)] hover:-translate-y-0.5 transition-all no-underline">
+              Get started free
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-            </button>
-            <button className="inline-flex items-center gap-2 px-6 py-2.5 border border-white/[0.12] text-t-primary text-sm font-medium rounded-full hover:border-t-muted hover:bg-white/[0.03] transition-all">
-              Read the docs
-            </button>
+            </Link>
+            <a href="#how-it-works" className="inline-flex items-center gap-2 px-6 py-2.5 border border-white/[0.12] text-t-primary text-sm font-medium rounded-full hover:border-t-muted hover:bg-white/[0.03] transition-all no-underline">
+              See how it works
+            </a>
           </div>
         </Reveal>
       </div>
